@@ -26,20 +26,28 @@ public:
 	int len;
 };
 
-class Element;
+class TagElement; // forward declaration
+
+// information in the tail TagElement
+class TailInfo {
+public:
+	int l;
+	TagElement* parameters;
+};
 
 class TagElement {
 public:
 	string tag;
 	vector<TagElement*> templateList; // comma separated
 	TagElement* next;
-	TagElement(string _tag) : tag(_tag), templateList({}), next(nullptr) {}
-};
+	bool hasBrackets; // distinguish between <> and no information
+	TailInfo* tailInfo;
 
-// Recursively self-contained resolution map (kind of like a linked list).
-class Node {
-public:
-	map<string, Node> children;
-	vector<Element> elements; // tag matches, but template args may not
-	SymbolDesc* symbol; // if non-null then end node
+	TagElement(string _tag) :
+		tag(_tag),
+		templateList({}),
+		next(nullptr),
+		hasBrackets(false),
+		tailInfo(nullptr) // non-null for tail element
+	{}
 };

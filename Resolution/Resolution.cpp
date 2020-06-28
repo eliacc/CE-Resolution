@@ -1,5 +1,6 @@
 #include "Resolution.h"
 
+#include <algorithm>
 #include <iostream>
 #include <stack>
 #include <sstream>
@@ -15,12 +16,7 @@ using std::string;
 using std::string_view;
 using std::vector;
 
-vector<SymbolDesc> symbols = {
-	{ "A.dll::B::C", 1234 },
-	{ "A.exe::B::C", 4321 },
-	{ "B::C", 1000 },
-	{ "Q<T1,T2>::A::B::C", 123456789 }
-};
+map<string, vector<TagElement*>> symbolMap;
 
 void printStack(stack<TagElement*> st)
 {
@@ -65,9 +61,15 @@ void addNode(stack<TagElement*>& tagStack, TagElement* node)
 	}
 }
 
+void preprocessString(string& s)
+{
+	s.erase(std::remove_if(s.begin(), s.end(), ::isspace));
+	std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+}
+
 TagElement* parseStringToTree(string const& path)
 {
-	std::cout << path << "\n\n";
+	std::cout << "\n\nSYMBOL: " << path << "\n";
 	TagElement* root = new TagElement("<ROOT>");
 
 	stack<TagElement*> tagStack;
@@ -84,7 +86,7 @@ TagElement* parseStringToTree(string const& path)
 			currTagStart = i + 1;
 			break;
 		}
-		case ',': // similar to ::?
+		case ',':
 		{
 			// add last tag element, if it didn't have a template
 			if (currTagStart != i) {
@@ -132,9 +134,6 @@ TagElement* parseStringToTree(string const& path)
 			while (linkTag->next) linkTag = linkTag->next;
 			tagStack.top()->next = linkTag;
 
-			std::cout << "prev tag: " << linkTag->tag << '\n';
-			std::cout << "stack top: " << tagStack.top()->tag << '\n';
-
 			i++; // read next :
 			currTagStart = i + 1;
 			break;
@@ -144,20 +143,79 @@ TagElement* parseStringToTree(string const& path)
 		}
 	}
 
+	size_t i = path.length();
+	if (currTagStart != i) {
+		// std::cout << "need to add final symbol\n";
+		TagElement* tag = new TagElement(path.substr(currTagStart, i - currTagStart));
+		addNode(tagStack, tag);
+	}
+
 	auto top = tagStack.top();
 	tagStack.pop();
 
+	if (!top->templateList.empty()) {
+		TagElement* realroot = top->templateList[0];
+		delete root; // fake root
 
-	return top;
+		size_t exti = realroot->tag.find(".");
+		if (exti != string::npos) {
+			string fn = realroot->tag.substr(0, exti);
+			string ext = realroot->tag.substr(exti + 1);
+			std::cout << "rearrange extension `" << fn << "` `" << ext << "`\n";
+
+			TagElement* newRoot = new TagElement(ext);
+			newRoot->tag = ext;
+			realroot->tag = fn;
+			newRoot->next = realroot;
+			return newRoot;
+		}
+		else {
+			return realroot;
+		}
+	}
+	else
+		return nullptr;
+}
+
+void registerNode(TagElement* node)
+{
+	//node
 }
 
 void registerSymbol(SymbolDesc& sym)
 {
+	TagElement* tree = parseStringToTree(sym.path);
+	if (!tree) {
+		std::cout << "Error: null tree for " << sym.path << '\n';
+		return;
+	}
+	printTree(tree);
 
+	TagElement* node = tree;
+	int i = 0;
+	while (node) {
+		std::cout << "map [" << i << "] " << node->tag << '\n';
+
+		symbolMap[node->tag].push_back(node); // empty construct for first instance
+
+		i++;
+		node = node->next;
+	}
+	
+	std::cout << "done\n";
 }
+
+vector<SymbolDesc> symbols = {
+	{ "win32.dll::Test::MessageBoxA", 1234 },
+	{ "win32.exe::Test2::MessageBoxA", 4321 },
+	{ "win32.dll::MessageBoxA", 1000 },
+	{ "Q<T1,T2>::A::B::Function", 123456789 }
+};
 
 int main()
 {
 	TagElement* root = parseStringToTree("A<B<C::ASDF::FDSA<Q::R,Z>,E>,D,V>");
 	printTree(root);
+
+	for (auto& sym : symbols) registerSymbol(sym);
 }
